@@ -1,0 +1,22 @@
+data:
+  root: data/afhq
+  image_size: 64
+vae:
+  #latent_dim, channels, beta
+
+ddpm:
+  timesteps: 1000
+  schedule: cosine
+
+unet:
+  base_channels: 64
+  channel_mults: [1, 2, 2, 4]
+  # attention resolutions: [16, 8]
+
+train:
+  lr: 2.0e-4
+  optimizer: adam
+  # epochs, batch_size, seed, checkpoint dir
+
+eval:
+  fid_samples: 10000
