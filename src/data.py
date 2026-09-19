@@ -1,5 +1,6 @@
 import torch
 from pathlib import Path 
+from torch import clamp
 from torch.utils.data import Dataset
 from torchvision.transforms import v2
 from PIL import Image
@@ -31,7 +32,7 @@ class DogSet(Dataset):
 
 # Denormalization formula : x = ((x_norm - a)/ b - a) * (max - min) + min, where a,b -> the current range (a,b) and max, min -> target range (min,max)
 def denormalize ( x_norm, x_min = -1.0, x_max= 1.0, original_min = 0.0, original_max=1.0):
-    return ((x_norm - x_min) / (x_max-x_min))* (original_max - original_min) + original_min
+    return clamp((((x_norm - x_min) / (x_max-x_min))* (original_max - original_min) + original_min),original_min,original_max)
     
     
         
