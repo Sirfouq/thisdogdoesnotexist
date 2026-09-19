@@ -1,7 +1,5 @@
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class Encoder(nn.Module):
     def __init__(self,encoder : nn.Module):
@@ -52,3 +50,16 @@ class VAE(nn.Module):
         z = torch.randn((batch_size,self.latent_dim),device=device)
         output = self.decoder(z)
         return output 
+
+
+def vae_loss(batch_size,x_hat, x, mu, log_var):
+    assert batch_size == x.shape[0]
+    #reconstruction needs to sum since : p(x|z) = ∏ p(x_i | z) => log p(x|z) = Σ log p(x_i | z) . Product of logs is a sum .
+    recon = nn.MSELoss(reduction='sum')(x_hat,x)/batch_size
+    KL = (-0.5 * torch.sum(1+log_var - mu**2 - torch.exp(log_var),dim=1)).mean()
+
+    negative_ELBO = recon + KL
+    return negative_ELBO,KL,recon
+
+
+

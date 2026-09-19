@@ -2,7 +2,8 @@ data:
   root: data/afhq
   image_size: 64
 vae:
-  #latent_dim, channels, beta
+  latent_dim: 128
+  channels: 3
 
 ddpm:
   timesteps: 1000
