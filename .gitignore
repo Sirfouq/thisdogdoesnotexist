@@ -17,4 +17,5 @@ env/
 .vscode/
 .idea/
 CLAUDE.md
-docs/difficulties.md
+docs/*
+!docs/design_notes.md
