@@ -9,11 +9,11 @@ from PIL import Image
 
 class DogSet(Dataset):
 
-    def __init__(self,data_dir,image_size,train = True, hflip = True,):
+    def __init__(self,data_dir,image_size,train = True, hflip = True):
         split = 'train' if train else 'val'
         dog_dir = Path(data_dir)/split/'dog'
         self.paths = sorted(path for path in dog_dir.iterdir() if path.suffix.lower() in {'.jpg' , '.png'})
-        transforms = [v2.Resize(size= (image_size,image_size) , antialias= True)]
+        transforms : list  = [v2.Resize(size= (image_size,image_size) , antialias= True)] 
         if train and hflip:
             transforms.append(v2.RandomHorizontalFlip())
         transforms+=[

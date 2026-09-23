@@ -27,8 +27,8 @@ class Decoder(nn.Module):
 class VAE(nn.Module):
     def __init__(self,encoder,decoder,latent_dim):
         super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
+        self.encoder = Encoder(encoder=encoder)
+        self.decoder = Decoder(decoder=decoder)
         self.latent_dim = latent_dim
 
     @staticmethod
@@ -53,7 +53,7 @@ class VAE(nn.Module):
         return output 
 
 
-def vae_loss(batch_size,x_hat, x, mu, log_var):
+def vae_loss(batch_size : int,x_hat : torch.Tensor, x : torch.Tensor, mu : torch.Tensor, log_var: torch.Tensor)-> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     assert batch_size == x.shape[0]
     #reconstruction needs to sum since : p(x|z) = ∏ p(x_i | z) => log p(x|z) = Σ log p(x_i | z) . Product of logs is a sum .
     recon = nn.MSELoss(reduction='sum')(x_hat,x)/batch_size
@@ -107,5 +107,15 @@ def build_decoder_net(latent_dim, channels, image_size):
         nn.Conv2d(in_channels=64, out_channels=channels,kernel_size=(3,3), stride=1, padding=1),
         nn.Tanh()
     )
-
     return decoder_net
+
+
+
+def load_vae_model(path,device = 'cpu'):
+    checkpoint = torch.load(path, map_location=device)
+    config = checkpoint['config']
+    model = VAE(encoder = build_encoder_net(**config),
+                decoder= build_decoder_net(**config),
+                latent_dim=config['latent_dim'])
+    model.load_state_dict(checkpoint['state_dict'])
+    return model.to(device=device)
