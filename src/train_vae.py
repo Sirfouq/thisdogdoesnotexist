@@ -8,6 +8,7 @@ import random
 from models import vae
 import json
 import yaml
+import os
 
 
 
@@ -29,6 +30,9 @@ elif torch.backends.mps.is_available():
     device = 'mps'
 else:
     device = 'cpu'
+
+os.makedirs('checkpoints', exist_ok=True)
+
 
 # the training set we will use for the full train_loop
 training_set = DogSet(data_dir='data/afhq', image_size=image_size,hflip= True)

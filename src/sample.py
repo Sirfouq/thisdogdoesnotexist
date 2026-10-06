@@ -2,6 +2,7 @@ import torch
 from models import vae
 from torchvision.utils import save_image
 from data import denormalize
+from torchinfo import summary
 import os
 
 if torch.cuda.is_available():
@@ -15,6 +16,7 @@ path = 'samples/'
 os.makedirs(path, exist_ok=True)
 
 model = vae.load_vae_model(path='checkpoints/vae_best_v2.pt' , device=device)
+summary(model, input_size=(16,3,64,64))
 model.eval()
 samples = model.sample(batch_size=16)
 save_image(denormalize(samples.cpu()), f'{path}samples.png', nrow= 4)
