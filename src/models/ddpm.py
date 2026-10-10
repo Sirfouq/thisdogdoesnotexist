@@ -31,6 +31,17 @@ class DDPM(nn.Module):
         sqrt_one_minus_alphas_hat = self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1)
         return sqrt_alpha_hat_t*x_start + sqrt_one_minus_alphas_hat*noise
 
+    def forward(self,x_start):
+        B = x_start.shape[0]
+        device = x_start.device
+        noise = torch.randn_like(x_start)
+        t = torch.randint(low= 0 , high= self.T , size=(B,), device=device)
+        x_t = self.q_sample(x_start=x_start, t = t, noise=noise )
+        return self.ddpm_loss(x_t=x_t , t=t , noise= noise)
+
+    def ddpm_loss(self,x_t : torch.Tensor, t : torch.Tensor ,noise : torch.Tensor):
+        loss = nn.MSELoss()
+        return loss(self.unet(x_t , t,) , noise)
     
 
 
