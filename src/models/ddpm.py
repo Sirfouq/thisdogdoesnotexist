@@ -42,9 +42,25 @@ class DDPM(nn.Module):
     def ddpm_loss(self,x_t : torch.Tensor, t : torch.Tensor ,noise : torch.Tensor):
         loss = nn.MSELoss()
         return loss(self.unet(x_t , t,) , noise)
-    
 
+    @torch.no_grad()
+    def p_sample(self,x_t,t):
+        noise_hat  = self.unet(x_t , t)
+        mean = (1/self.alphas[t].sqrt().view(-1,1,1,1))*(x_t - (self.betas[t].view(-1,1,1,1)/self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1))*noise_hat)
+        fresh_noise = torch.randn_like(x_t)
+        if t[0].item()==0:
+            return mean
+        return mean + self.betas[t].sqrt().view(-1,1,1,1)* fresh_noise  
 
+    @torch.no_grad()
+    def sample(self,batch_size :int, image_size : tuple, channel_size = 3):
+        device = next(self.parameters()).device
+        x_t = torch.randn(batch_size, channel_size ,*image_size , device=device)
+        for t in reversed(range(self.T)):
+            t_batch = torch.ones(batch_size , device=device, dtype=torch.int32) * t
+            x_prev = self.p_sample(x_t=x_t , t=t_batch)
+            x_t = x_prev
+        return x_t
 
 
 def cosine_beta_schedule(timesteps, s = 0.008):
