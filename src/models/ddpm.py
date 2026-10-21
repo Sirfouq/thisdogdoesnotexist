@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from models.unet import UNet
 class DDPM(nn.Module):
 
     betas:torch.Tensor
@@ -31,7 +31,7 @@ class DDPM(nn.Module):
         sqrt_one_minus_alphas_hat = self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1)
         return sqrt_alpha_hat_t*x_start + sqrt_one_minus_alphas_hat*noise
 
-    def forward(self,x_start):
+    def forward(self,x_start:torch.Tensor):
         B = x_start.shape[0]
         device = x_start.device
         noise = torch.randn_like(x_start)
@@ -44,8 +44,16 @@ class DDPM(nn.Module):
         return loss(self.unet(x_t , t,) , noise)
 
     @torch.no_grad()
-    def p_sample(self,x_t,t):
+    def p_sample(self,x_t : torch.Tensor,t : torch.Tensor):
         noise_hat  = self.unet(x_t , t)
+
+        # clip the x_0 that noise_hat implies to [-1,1] (images live there) and convert back.
+        # without this, 1/sqrt(alpha_t) at t=999 is ~100 and any error in noise_hat explodes.
+        
+        sqrt_alpha_hat_t = self.sqrt_alphas_hat[t].view(-1,1,1,1)
+        sqrt_one_minus_alphas_hat_t = self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1)
+        x_0 = ((x_t - sqrt_one_minus_alphas_hat_t*noise_hat)/sqrt_alpha_hat_t).clamp(-1,1)
+        noise_hat = (x_t - sqrt_alpha_hat_t*x_0)/sqrt_one_minus_alphas_hat_t
         mean = (1/self.alphas[t].sqrt().view(-1,1,1,1))*(x_t - (self.betas[t].view(-1,1,1,1)/self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1))*noise_hat)
         fresh_noise = torch.randn_like(x_t)
         if t[0].item()==0:
@@ -62,10 +70,17 @@ class DDPM(nn.Module):
             x_t = x_prev
         return x_t
 
+def load_ddpm_model(path, device='cpu'):
+    checkpoint = torch.load(path, map_location=device)
+    config = checkpoint['config']
+    unet = UNet(**config['unet'])
+    model = DDPM(unet=unet, T=config['T'])
+    model.load_state_dict(checkpoint['state_dict'])
+    return model.to(device=device)
 
 def cosine_beta_schedule(timesteps, s = 0.008):
     t = torch.linspace(start=0, end=timesteps, steps=timesteps+1)
     f_t =  torch.cos(((t/timesteps+s)/(1+s)) * 0.5 * torch.pi) ** 2
     alphas_hat = f_t / f_t[0]
     betas = 1 - alphas_hat[1:] / alphas_hat[:-1]
-    return torch.clamp(betas,min=0.0001 , max=0.9999 )
+    return torch.clamp(betas,min=0.0001 , max=0.999)

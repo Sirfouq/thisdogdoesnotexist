@@ -132,7 +132,27 @@ class UNet(nn.Module):
                 current_num_channels = channel
             if lvl != len(channels)-1:
                     self.ups.append(upsample(num_channels=current_num_channels))
-                
+
+    def forward(self, x_t : torch.Tensor, t: torch.Tensor):
+        time_embs = self.time_mlp(t)
+        h = self.init_conv(x_t)
+        skips = [h]
+        for module in self.downs:
+            h = module(h,time_embs) if isinstance(module,ResidualBlock) else module(h)
+            skips.append(h)
+
+        h =self.mid1(h, time_embs)
+        h = self.mid2(h,time_embs)
+
+        for module in self.ups:
+            if isinstance(module,ResidualBlock):
+                h = torch.cat((h ,skips.pop()),dim=1)
+                h = module(h,time_embs)
+            else :
+                h = module(h)
+
+        return self.out(h)
+               
 
 
 

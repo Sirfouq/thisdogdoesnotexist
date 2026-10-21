@@ -10,9 +10,12 @@ ddpm:
   schedule: cosine
 
 unet:
-  base_channels: 64
-  channel_mults: [1, 2, 2, 4]
-  # attention resolutions: [16, 8]
+  in_channels: 3
+  base_channel: 64
+  time_emb_dim: 64
+  channels_mults: [1, 2, 2, 4]
+  num_res_blocks: 2
+  num_groups: 32
 
 train:
   lr: 2.0e-4
