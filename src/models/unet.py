@@ -2,7 +2,7 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 class SinusoidalTimeEmbedding(nn.Module):
 
     def __init__(self,dim):
@@ -18,9 +18,49 @@ class SinusoidalTimeEmbedding(nn.Module):
         pe[:, self.dim//2:] = torch.cos(angles)
         return pe 
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels , out_channels ,time_dim, num_of_groups = 32):
+
+class AttentionBlock(nn.Module):
+    def __init__(self, in_channels,num_groups =32):
         super().__init__()
+        self.Q = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1)
+        self.K = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1)
+        self.V = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1)
+
+        self.grp_norm = nn.GroupNorm(num_groups=num_groups, num_channels=in_channels)
+
+        # one more learned mix of the gathered values before they rejoin x.
+        # attention's output lives in V's basis, not x's — proj translates it back,
+        # and lets the block choose how much (or none) of it to add.
+        self.proj = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1)
+
+    def forward(self, x):
+        B,C,H,W = x.shape
+        h = self.grp_norm(x)
+        q, k, v = self.Q(h) , self.K(h), self.V(h)
+
+        q = q.flatten(2).transpose(1,2)        #flattens on C dimension
+        k = k.flatten(2).transpose(1,2)
+        v = v.flatten(2).transpose(1,2)
+
+        # scores  = q @ k.transpose(-2,-1) / (C ** 0.5)   # [B, HW, HW] every position vs every position
+        # weights = scores.softmax(dim=-1)                 # rows sum to 1
+        # out     = weights @ v                            # [B, HW, C] weighted gather
+        
+        # out = out.transpose(1,2).unflatten(2,(H,W))
+        # return x + self.proj(out)
+
+
+        out = F.scaled_dot_product_attention(query=q, key=k, value=v)
+        out = out.transpose(1,2).unflatten(2,(H,W))
+        return x + self.proj(out)
+
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels , out_channels ,time_dim, num_of_groups = 32 , use_attention = False):
+        super().__init__()
+
+
+        
 
         self.block1 = nn.Sequential(
             nn.GroupNorm(num_groups=num_of_groups , num_channels=in_channels),
@@ -51,11 +91,18 @@ class ResidualBlock(nn.Module):
                             in_channels= in_channels ,
                             out_channels=out_channels,kernel_size=1) if in_channels !=out_channels else nn.Identity()
 
+
+        self.attention_block = AttentionBlock(in_channels=out_channels, num_groups=num_of_groups) if use_attention else nn.Identity()
+
     def forward(self,x,t_emb):
         h = self.block1(x)
         h = h + self.mlp(t_emb).view(x.shape[0],-1,1,1)
         h = self.block2(h)
-        return h + self.shortcut(x)
+        h = h + self.shortcut(x)
+        return self.attention_block(h)
+
+
+
 
 
 def downsample(num_channels : int):
@@ -74,7 +121,9 @@ class UNet(nn.Module):
                 time_emb_dim = 64,
                 channels_mults = (1,2,2,4),
                 num_res_blocks = 2,
-                num_groups =32):
+                num_groups =32,
+                attention_res = (16,8),
+                image_size = 64):
         super().__init__()
         self.time_cond_dim = time_emb_dim*4 # conditioned:    ε̂ = f(x_t, t) -> it gives the network an extra input that steers what it produces .
         self.time_mlp = nn.Sequential (
@@ -96,24 +145,30 @@ class UNet(nn.Module):
         current_num_channels = base_channel
         skip_channels = [base_channel]
 
-
+        current_res = image_size
         for lvl , channel in enumerate(channels):
             for i in range(num_res_blocks):
                 self.downs.append(ResidualBlock(
                                 in_channels=current_num_channels, 
                                 out_channels=channel, 
                                 time_dim=self.time_cond_dim,
-                                num_of_groups=num_groups))
+                                num_of_groups=num_groups,
+                                use_attention= current_res in attention_res ))
                 current_num_channels = channel
                 skip_channels.append(current_num_channels)
             if lvl != len(channels)-1:
                 self.downs.append(downsample(num_channels=current_num_channels))
                 skip_channels.append(current_num_channels)
+                current_res //=2
+            
         
         self.mid1 = ResidualBlock(in_channels=current_num_channels ,
                                   out_channels= current_num_channels,
                                   time_dim=self.time_cond_dim,
-                                  num_of_groups=num_groups)
+                                  num_of_groups=num_groups,
+                                  use_attention= current_res in attention_res)
+        
+        
         self.mid2 = ResidualBlock(in_channels=current_num_channels ,
                                   out_channels= current_num_channels,
                                   time_dim=self.time_cond_dim,
@@ -128,10 +183,12 @@ class UNet(nn.Module):
                                             in_channels= in_ch,
                                             out_channels=channel,
                                             time_dim=self.time_cond_dim,
-                                            num_of_groups=num_groups))
+                                            num_of_groups=num_groups,
+                                            use_attention= current_res in attention_res))
                 current_num_channels = channel
             if lvl != len(channels)-1:
                     self.ups.append(upsample(num_channels=current_num_channels))
+                    current_res *= 2
 
     def forward(self, x_t : torch.Tensor, t: torch.Tensor):
         time_embs = self.time_mlp(t)
@@ -141,7 +198,7 @@ class UNet(nn.Module):
             h = module(h,time_embs) if isinstance(module,ResidualBlock) else module(h)
             skips.append(h)
 
-        h =self.mid1(h, time_embs)
+        h = self.mid1(h, time_embs)
         h = self.mid2(h,time_embs)
 
         for module in self.ups:

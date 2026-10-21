@@ -1,6 +1,6 @@
 data:
   root: data/afhq
-  image_size: 64
+  image_size: &image_size 64
 vae:
   latent_dim: 128
   channels: 3
@@ -16,6 +16,8 @@ unet:
   channels_mults: [1, 2, 2, 4]
   num_res_blocks: 2
   num_groups: 32
+  attention_res: [16, 8]
+  image_size: *image_size
 
 train:
   lr: 2.0e-4
