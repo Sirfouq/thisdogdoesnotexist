@@ -28,14 +28,14 @@ T = config['ddpm']['timesteps']
 
 
 # Overfitting test
-train_set_no_aug = DogSet(data_dir=data_root, image_size=image_size, hflip=False)
-overfit_sample   = Subset(train_set_no_aug, range(100))
-overfit_loader   = DataLoader(overfit_sample, batch_size=16, shuffle=True)
+# train_set_no_aug = DogSet(data_dir=data_root, image_size=image_size, hflip=False)
+# overfit_sample   = Subset(train_set_no_aug, range(100))
+# overfit_loader   = DataLoader(overfit_sample, batch_size=16, shuffle=True)
 
 train_set = DogSet(data_dir=data_root, image_size=image_size, hflip=True)
 validation_set = DogSet(data_dir= data_root, train=False, image_size=image_size)
 
-train_loader = DataLoader(dataset=train_set, batch_size= batch_size, shuffle= True )
+train_loader = DataLoader(dataset=train_set, batch_size= batch_size, shuffle= True, num_workers=2 , pin_memory=torch.cuda.is_available(), persistent_workers=True )
 val_loader = DataLoader(dataset=validation_set, batch_size= batch_size, shuffle= False )
 
 
@@ -61,10 +61,13 @@ optimizer = optim.Adam(params=model.parameters(),lr=lr, betas=(0.9, 0.999))
 history = {'train_loss' : [] , 'val_loss' : []}
 val_lowest_loss = float('inf')
 
+
+os.makedirs(ROOT/'checkpoints', exist_ok=True)
+
 for epoch in range(num_epochs):
     model.train()
-    total_loss = 0.0
-    for batch in overfit_loader:
+    train_total_loss = 0.0
+    for batch in train_loader:
         batch=batch.to(device=device)
         optimizer.zero_grad()
 
@@ -76,15 +79,34 @@ for epoch in range(num_epochs):
         scaler.step(optimizer)
         scaler.update()
         ema.update(model=model)
-        total_loss +=loss.item()
-    avg_loss = total_loss/len(overfit_loader)
+        train_total_loss +=loss.item()
+    avg_loss = train_total_loss/len(train_loader)
+    model.eval()
+    val_total_loss = 0.0
+    with torch.no_grad():
+        for batch in val_loader:
+            batch = batch.to(device= device)
+            val_total_loss+=model(batch).item()
+    val_avg = val_total_loss/len(val_loader)
+    history['val_loss'].append(val_avg)
     history['train_loss'].append(avg_loss)
     if epoch % 10 ==0 :
-        print(f'Epoch {epoch:}| loss{avg_loss}')
+        print(f'Epoch {epoch:4d}| train {avg_loss:.4f} | val {val_avg:.4f}')
+    
+    
+    with open (ROOT/'checkpoints/ddpm_history.json', 'w') as f:
+        json.dump(history, f)
 
-os.makedirs(ROOT/'checkpoints', exist_ok=True)
+    if val_avg< val_lowest_loss : 
+        val_lowest_loss = val_avg
+        torch.save({
+            'config': {'T': T, 'unet': config['unet']},
+            'state_dict': model.state_dict(),
+            'ema_state_dict' : ema.shadow
+        }, ROOT/'checkpoints/ddpm_best.pt')
+
 torch.save({
     'config': {'T': T, 'unet': config['unet']},
     'state_dict': model.state_dict(),
-    'ema_state_dict' : ema.shadow
-}, ROOT/'checkpoints/ddpm_overfit100.pt')
+    'ema_state_dict': ema.shadow,
+}, ROOT/'checkpoints/ddpm_last.pt')
