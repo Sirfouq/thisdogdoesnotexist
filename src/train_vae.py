@@ -9,13 +9,17 @@ from models import vae
 import json
 import yaml
 import os
+from pathlib import Path
+from torch.amp import autocast,GradScaler
 
 
+ROOT = Path(__file__).resolve().parent.parent
 
-
-with open('config.yaml','r') as f:
+with open(ROOT/'config.yaml','r') as f:
     config = yaml.load(f, Loader=yaml.SafeLoader)
 
+
+data_root = ROOT/config['data']['root']
 image_size = config['data']['image_size']
 channels   = config['vae']['channels']
 latent_dim = config['vae']['latent_dim']
@@ -31,18 +35,21 @@ elif torch.backends.mps.is_available():
 else:
     device = 'cpu'
 
-os.makedirs('checkpoints', exist_ok=True)
+use_amp = (device == 'cuda')
+scaler  = GradScaler(enabled=use_amp)
+
+os.makedirs(ROOT/'checkpoints', exist_ok=True)
 
 
 # the training set we will use for the full train_loop
-training_set = DogSet(data_dir='data/afhq', image_size=image_size,hflip= True)
+training_set = DogSet(data_dir=data_root, image_size=image_size,hflip= True)
 
 # we sample 100 images from the training without hoprizontal flip to confirm that the model is learning before attempting a full training loop.
-training_set_no_aug = DogSet(data_dir='data/afhq', image_size=image_size,hflip= False)
+training_set_no_aug = DogSet(data_dir=data_root, image_size=image_size,hflip= False)
 overfit_sample = Subset(training_set_no_aug,range(100))
 
 
-validation_set = DogSet(data_dir= 'data/afhq', train=False, image_size=image_size)
+validation_set = DogSet(data_dir= data_root, train=False, image_size=image_size)
 
 
 #train loop
@@ -70,10 +77,12 @@ for epoch in range(num_epochs):
     for batch in train_loader:
         batch = batch.to(device)
         optimizer.zero_grad()
-        mu,log_var,x_hat = model(batch)
-        loss,kl,recon = vae.vae_loss(batch_size=batch.shape[0], x_hat= x_hat, x=batch,mu=mu ,log_var=log_var)
-        loss.backward()
-        optimizer.step()
+        with autocast(device_type=device, dtype=torch.float16, enabled=use_amp):
+            mu,log_var,x_hat = model(batch)
+            loss,kl,recon = vae.vae_loss(batch_size=batch.shape[0], x_hat= x_hat, x=batch,mu=mu ,log_var=log_var)
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         train_dict['loss']  += loss.item()
         train_dict['kl']    += kl.item()
         train_dict['recon'] += recon.item()
@@ -98,7 +107,7 @@ for epoch in range(num_epochs):
     history['val_loss'].append(val_loss)
     history['val_recon'].append(val_dict['recon']/n_val_batches)
     history['val_kl'].append(val_dict['kl']/n_val_batches)
-    with open('checkpoints/history.json','w') as f:
+    with open(ROOT/'checkpoints/history.json','w') as f:
         json.dump(history, f)
     if epoch%10 ==0:
              print(f'Epoch {epoch:4d} | '
@@ -113,7 +122,7 @@ for epoch in range(num_epochs):
                         'channels' : channels,
                         'latent_dim' : latent_dim},
              'state_dict' : model.state_dict(),
-        },'checkpoints/vae_best.pt'
+        },ROOT/'checkpoints/vae_best.pt'
         )
         val_lowest_loss = val_loss 
 
