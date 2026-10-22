@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from models.unet import UNet
+from ema import EMA
 class DDPM(nn.Module):
 
     betas:torch.Tensor
@@ -49,7 +50,7 @@ class DDPM(nn.Module):
 
         # clip the x_0 that noise_hat implies to [-1,1] (images live there) and convert back.
         # without this, 1/sqrt(alpha_t) at t=999 is ~100 and any error in noise_hat explodes.
-        
+
         sqrt_alpha_hat_t = self.sqrt_alphas_hat[t].view(-1,1,1,1)
         sqrt_one_minus_alphas_hat_t = self.sqrt_one_minus_alphas_hat[t].view(-1,1,1,1)
         x_0 = ((x_t - sqrt_one_minus_alphas_hat_t*noise_hat)/sqrt_alpha_hat_t).clamp(-1,1)
@@ -70,12 +71,17 @@ class DDPM(nn.Module):
             x_t = x_prev
         return x_t
 
-def load_ddpm_model(path, device='cpu'):
+def load_ddpm_model(path, device='cpu', use_ema =True):
     checkpoint = torch.load(path, map_location=device)
     config = checkpoint['config']
     unet = UNet(**config['unet'])
     model = DDPM(unet=unet, T=config['T'])
     model.load_state_dict(checkpoint['state_dict'])
+    if use_ema and 'ema_state_dict' in checkpoint:
+        ema = EMA(model=model, decay=0.0)
+        ema.shadow = checkpoint['ema_state_dict']
+        ema.copy_to(model=model)
+
     return model.to(device=device)
 
 def cosine_beta_schedule(timesteps, s = 0.008):

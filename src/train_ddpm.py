@@ -7,6 +7,7 @@ from models.ddpm import DDPM
 import yaml
 import json
 import os
+from ema import EMA
 
 with open('config.yaml','r') as f:
     config = yaml.load(f, Loader=yaml.SafeLoader)
@@ -45,6 +46,8 @@ torch.manual_seed(seed=seed)
 unet = UNet(**config['unet'])
 model = DDPM(unet=unet, T=1000).to(device=device)
 
+ema = EMA(model=model, decay=0.9999)
+
 optimizer = optim.Adam(params=model.parameters(),lr=lr, betas=(0.9, 0.999))
 
 history = {'train_loss' : [] , 'val_loss' : []}
@@ -59,6 +62,7 @@ for epoch in range(num_epochs):
         loss = model(batch)
         loss.backward()
         optimizer.step()
+        ema.update(model=model)
         total_loss +=loss.item()
     avg_loss = total_loss/len(overfit_loader)
     history['train_loss'].append(avg_loss)
@@ -69,4 +73,5 @@ os.makedirs('checkpoints', exist_ok=True)
 torch.save({
     'config': {'T': 1000, 'unet': config['unet']},
     'state_dict': model.state_dict(),
+    'ema_state_dict' : ema.shadow
 }, 'checkpoints/ddpm_overfit100.pt')
