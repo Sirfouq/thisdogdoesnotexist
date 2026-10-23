@@ -1,5 +1,4 @@
 import torch
-import torchinfo
 from torchvision.utils import save_image
 from data import DogSet,denormalize
 from torch.utils.data import DataLoader,Subset
