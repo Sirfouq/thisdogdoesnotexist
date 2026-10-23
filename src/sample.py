@@ -19,5 +19,5 @@ model = vae.load_vae_model(path='checkpoints/vae_best_v2.pt' , device=device)
 summary(model, input_size=(16,3,64,64))
 model.eval()
 samples = model.sample(batch_size=16)
-save_image(denormalize(samples.cpu()), f'{path}samples.png', nrow= 4)
+save_image(denormalize(samples.cpu()), f'{path}vae_samples.png', nrow= 4)
 

@@ -107,7 +107,7 @@ for epoch in range(num_epochs):
     history['val_loss'].append(val_loss)
     history['val_recon'].append(val_dict['recon']/n_val_batches)
     history['val_kl'].append(val_dict['kl']/n_val_batches)
-    with open(ROOT/'checkpoints/history.json','w') as f:
+    with open(ROOT/'checkpoints/vae_history.json','w') as f:
         json.dump(history, f)
     if epoch%10 ==0:
              print(f'Epoch {epoch:4d} | '
