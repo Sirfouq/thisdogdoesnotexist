@@ -29,3 +29,7 @@ train:
 
 eval:
   fid_samples: 10000
+
+checkpoints:
+  ddpm: checkpoints/ddpm_last.pt
+  vae: checkpoints/vae_best.pt

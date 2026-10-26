@@ -16,6 +16,7 @@ env/
 .DS_Store
 .vscode/
 .idea/
+fid_data/
 CLAUDE.md
 docs/*
 !docs/design_notes.md

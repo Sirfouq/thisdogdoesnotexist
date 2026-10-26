@@ -15,7 +15,7 @@ else:
 path = 'samples/'
 os.makedirs(path, exist_ok=True)
 
-model = vae.load_vae_model(path='checkpoints/vae_best_v2.pt' , device=device)
+model = vae.load_vae_model(path='checkpoints/vae_best.pt' , device=device)
 summary(model, input_size=(16,3,64,64))
 model.eval()
 samples = model.sample(batch_size=16)

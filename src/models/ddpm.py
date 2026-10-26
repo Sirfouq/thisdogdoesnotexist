@@ -69,7 +69,7 @@ class DDPM(nn.Module):
             t_batch = torch.ones(batch_size , device=device, dtype=torch.int32) * t
             x_prev = self.p_sample(x_t=x_t , t=t_batch)
             x_t = x_prev
-        return x_t
+        return x_t.clamp(-1,1)
 
 def load_ddpm_model(path, device='cpu', use_ema =True):
     checkpoint = torch.load(path, map_location=device)
