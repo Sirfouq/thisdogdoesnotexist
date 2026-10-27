@@ -30,8 +30,8 @@ Each grid is 16 unconditional samples from a fixed seed, not cherry-picked.
 
 | | FID ↓ | parameters | training | sampling cost |
 |---|---|---|---|---|
-| **DDPM** | **TBD** | 18.5M | 700 epochs, 7.3 GPU-h | 1000 forward passes / image |
-| **VAE** | TBD | 8.7M | 500 epochs, ~3.3 GPU-h | 1 forward pass / image |
+| **DDPM** | **24.85** | 18.5M | 700 epochs, 7.3 GPU-h | 1000 forward passes / image |
+| **VAE** | 264.61 | 8.7M | 500 epochs, ~3.3 GPU-h | 1 forward pass / image |
 
 FID computed with [`clean-fid`](https://github.com/GaParmar/clean-fid) on 10,000
 generated samples against all 4,739 training images, both at 64×64 through the same
