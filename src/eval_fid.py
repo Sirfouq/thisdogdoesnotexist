@@ -8,6 +8,10 @@ from data import DogSet, denormalize
 from models.ddpm import DDPM, load_ddpm_model
 from models.vae import VAE, load_vae_model
 
+
+# Dumps real and generated images to folders and computes FID for DDPM and VAE (same real set for a fair comparison).
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 with open(ROOT/'config.yaml' , 'r') as f:
@@ -43,6 +47,7 @@ def dump_generated(
         print(f'{current}/{num_samples}', flush=True)
 
 def fid_compute(real_dir, generated_dir, device = 'cpu', num_workers = 0):
+    # FID: compares Inception-v3 feature statistics (mean, covariance) of real vs. generated images; lower = closer to the real data.
     score = fid.compute_fid(str(real_dir), str(generated_dir),device=torch.device(device=device),num_workers=num_workers)
     return score 
 

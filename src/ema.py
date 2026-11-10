@@ -3,6 +3,9 @@ import torch.nn as nn
 
 
 class EMA():
+    
+    # Keeps a smoothed "shadow" copy of the weights: shadow <- d * shadow + (1 - d) * weights.
+    # Averages out step-to-step noise from minibatch gradients; sample with the shadow for cleaner images.
     def __init__(self,model: nn.Module , decay : float) :
         self.decay = decay
         self.step = 0
@@ -10,6 +13,7 @@ class EMA():
 
 
     def warmup(self,step) :
+        # Small d early so the shadow quickly forgets the random init; rises toward `decay` as training goes on.
         d =min(self.decay, (1+step)/ (10+ step))
         return d
 
