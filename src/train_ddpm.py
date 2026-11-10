@@ -64,6 +64,8 @@ val_lowest_loss = float('inf')
 
 os.makedirs(ROOT/'checkpoints', exist_ok=True)
 
+
+# Train loop
 for epoch in range(num_epochs):
     model.train()
     train_total_loss = 0.0

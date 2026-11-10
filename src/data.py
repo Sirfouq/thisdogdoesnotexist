@@ -14,7 +14,11 @@ class DogSet(Dataset):
         dog_dir = Path(data_dir)/split/'dog'
         self.paths = sorted(path for path in dog_dir.iterdir() if path.suffix.lower() in {'.jpg' , '.png'})
         transforms : list  = [v2.Resize(size= (image_size,image_size) , antialias= True)] 
-        if train and hflip:
+
+        # Data augmentation : horizontal flipping allows the model to be trained on more samples without introducing additional data.
+        # Horizontal flipping is allowed since it does not alter the meaning of a dog . A horizontally flipped image still shows a dog . 
+        # A vertically flipped image (upside - down) teaches the model to generate upside down dogs.
+        if train and hflip: 
             transforms.append(v2.RandomHorizontalFlip())
         transforms+=[
             v2.ToImage(),
@@ -30,7 +34,7 @@ class DogSet(Dataset):
         img = Image.open(self.paths[idx]).convert('RGB')
         return self.transform(img)
 
-# Denormalization formula : x = ((x_norm - a)/ b - a) * (max - min) + min, where a,b -> the current range (a,b) and max, min -> target range (min,max)
+# Denormalization formula : x = ((x_norm - a)/(b - a)) * (max - min) + min, where a,b -> the current range (a,b) and max, min -> target range (min,max)
 def denormalize ( x_norm, x_min = -1.0, x_max= 1.0, original_min = 0.0, original_max=1.0):
     return clamp((((x_norm - x_min) / (x_max-x_min))* (original_max - original_min) + original_min),original_min,original_max)
     
