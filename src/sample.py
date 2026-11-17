@@ -12,6 +12,7 @@ elif torch.backends.mps.is_available():
 else:
     device = 'cpu'   
 
+torch.manual_seed(4)
 path = 'samples/'
 os.makedirs(path, exist_ok=True)
 

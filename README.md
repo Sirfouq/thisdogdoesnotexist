@@ -28,10 +28,10 @@ Each grid is 16 unconditional samples from a fixed seed, not cherry-picked.
 
 ## Results
 
-| | FID ↓ | parameters | training | sampling cost |
-|---|---|---|---|---|
-| **DDPM** | **24.85** | 18.5M | 700 epochs, 7.3 GPU-h | 1000 forward passes / image |
-| **VAE** | 264.61 | 8.7M | 500 epochs, ~3.3 GPU-h | 1 forward pass / image |
+|          | FID ↓     | parameters | training               | sampling cost               |
+| -------- | --------- | ---------- | ---------------------- | --------------------------- |
+| **DDPM** | **24.85** | 18.5M      | 700 epochs, 7.3 GPU-h  | 1000 forward passes / image |
+| **VAE**  | 264.61    | 8.7M       | 500 epochs, ~3.3 GPU-h | 1 forward pass / image      |
 
 FID computed with [`clean-fid`](https://github.com/GaParmar/clean-fid) on 10,000
 generated samples against all 4,739 training images, both at 64×64 through the same
@@ -39,8 +39,8 @@ preprocessing path. `clean-fid` is used specifically because differences in imag
 resizing between FID implementations can shift the score by more than 10 points, which
 makes numbers from different codebases non-comparable.
 
-The sampling-cost column is not a footnote. Generating 10,000 DDPM samples took
-**9.5 GPU-hours**; the VAE produced the same number in seconds. Diffusion buys sample
+Generating 10,000 DDPM samples took
+**9.5 GPU-hours**. The VAE produced the same number in seconds. Diffusion buys sample
 quality with roughly a 1000× increase in inference cost.
 
 ---
@@ -53,20 +53,25 @@ compound.
 **The reconstruction term is an averaging objective.** The VAE's loss is the ELBO,
 and its reconstruction term is a Gaussian log-likelihood, which reduces to mean squared
 error. Given a latent code `z` that is consistent with many plausible images, the output
-that minimises MSE is not any one of them — it is their *mean*. An average of several
-dogs is a blurry dog. The model is not failing; it is doing exactly what the objective
+that minimises MSE is not any one of them. It is their _mean_. An average of several
+dogs is a blurry dog. The model is not failing. It is actually doing exactly what the objective
 asks.
 
 **The bottleneck is lossy and there is no way back.** Every image is compressed to 128
 numbers before being reconstructed. That discards most of the high-frequency detail, and
-the decoder has no path to recover it. The UNet used by the diffusion model never
-compresses: it stays at full resolution through skip connections at every level, so fine
-texture survives.
+the decoder has no path to recover it.
+
+## The diffusion model avoids blurriness
 
 The diffusion model avoids the averaging problem entirely because it is not asked to
 reconstruct anything. It predicts the noise that was added to an image at a known
-corruption level — a task that has a well-defined answer and no incentive to hedge
-between alternatives.
+corruption level. For a given `z` there is no single correct image, so the decoder hedges. For a given `(x_t, t)` there is one noise tensor that was actually used.
+
+During the denoising process of moving from a t-steps noised image `x_t` to `x_(t-1)`, the
+model predicts the mean of `x_(t-1)` and the sampler draws around that mean by adding fresh
+noise. Taking the mean at every one of the 1000 steps would bring back the same averaging
+problem. The noise makes each step commit to a certain path, and the next step builds on
+that choice.
 
 ---
 
@@ -84,21 +89,26 @@ process uses the closed form `x_t = √ᾱ_t · x₀ + √(1−ᾱ_t) · ε`, so
 reachable in a single step. Training follows Algorithm 1 of Ho et al.: sample a random
 `t` per image, corrupt, and regress the network's output onto the noise that was used.
 
+**Loss.** The VAE minimises the negative ELBO, a reconstruction term + a KL term. The reconstruction term is an MSE
+summed over pixels and averaged over the batch which puts it in the same per-image units as the KL term.
+No beta weighting is applied.
+
+The DDPM uses a simplified MSELoss between the actual noise we have used and the network's predicted noise.
+
 **Architecture.** An 18.5M-parameter UNet: base width 64, channel multipliers
-`[1, 2, 2, 4]`, two residual blocks per resolution, self-attention at 16² and 8²
+`[1, 2, 2, 4]`, two residual blocks per resolution, self-attention at 16x16 and 8x8
 (11 attention blocks in total). Timesteps enter through a sinusoidal embedding followed
 by a shared MLP, and each residual block projects that vector to its own channel count
-and adds it as a per-channel bias — the mechanism by which one set of weights handles
+and adds it as a per-channel bias, the mechanism by which one set of weights handles
 1000 different denoising problems.
 
 **Training.** Adam at 2e-4, batch size 128, mixed precision, EMA of the weights with
 decay 0.9999 and a warmup ramp. All samples are generated from the EMA weights.
 Both models were trained on a single Kaggle T4.
 
-**Gates.** Before either full run, each model had to overfit 100 images. Generative
-models fail silently — a bug and "not trained enough" look identical — so the gate is
-the cheapest way to separate the two. The DDPM's loss fell from 0.755 to 0.023 on that
-set, 15× below the score of the trivial "echo the input" solution.
+**Gates.** Before either full run, each model had to overfit 100 images. Generative models
+fail silently, since a bug and "not trained enough" look identical, so the gate is the
+cheapest way to separate the two.
 
 ---
 
@@ -127,7 +137,7 @@ an ELBO in nats per image.
 
 **Lower validation loss selected a worse model.** The run's best-validation checkpoint
 (epoch 294) produced samples with heavy magenta and green colour casts; the final
-checkpoint (epoch 699), with a *higher* validation loss, produced natural colour. The
+checkpoint (epoch 699), with a _higher_ validation loss, produced natural colour. The
 apparent improvement was noise: the validation loss resamples `t` and the noise every
 epoch, and the 100-epoch block means for epochs 200–299 and 600–699 are identical
 (0.0414 and 0.0416). Checkpoint selection by validation loss is unreliable here. The
@@ -138,7 +148,7 @@ cases that determine fine texture keep improving.
 **The samples are not copies of the training set.** Memorisation is a documented failure
 mode for diffusion models on small datasets, so it was checked rather than assumed. For
 each generated image, the nearest training image by L2 distance shares colour palette and
-pose but is a different animal. Generated samples sit slightly *closer* to the training
+pose but is a different animal. Generated samples sit slightly _closer_ to the training
 set than real images do to each other (21.5 vs 25.6 mean L2), which reflects their
 smoothness rather than memorisation — a blend of training images would be blurry, and
 these are not.
@@ -152,9 +162,6 @@ these are not.
 - **Background colour casts.** Facial structure and fur texture are learned well;
   overall colour is low-frequency content that is learned late, and at this budget it is
   often wrong.
-- **Horizontal band artifacts** appear in a minority of samples. Measuring out-of-range
-  pixels per row ruled out output clipping as the cause; the bands originate in the
-  model's output, most likely in the nearest-neighbour upsampling path.
 - **Not an equal-compute comparison.** The VAE converged in ~111 epochs and was given no
   more; the DDPM was still improving at cutoff, so its FID is an upper bound.
 - **Backgrounds are weak.** AFHQ is face-aligned, so facial structure is highly
@@ -202,12 +209,12 @@ Trained weights are not in the repository.
 
 Worked from:
 
-- Ho, J., Jain, A., Abbeel, P. (2020). *Denoising Diffusion Probabilistic Models.* [arXiv:2006.11239](https://arxiv.org/abs/2006.11239)
-- Nichol, A., Dhariwal, P. (2021). *Improved Denoising Diffusion Probabilistic Models.* [arXiv:2102.09672](https://arxiv.org/abs/2102.09672)
-- Tomczak, J. M. (2024). *Deep Generative Modeling* (2nd ed.). Springer. [doi:10.1007/978-3-031-64087-2](https://doi.org/10.1007/978-3-031-64087-2)
-- Rogge, N., Rasul, K. (2022). *The Annotated Diffusion Model.* [Hugging Face](https://huggingface.co/blog/annotated-diffusion)
+- Ho, J., Jain, A., Abbeel, P. (2020). _Denoising Diffusion Probabilistic Models._ [arXiv:2006.11239](https://arxiv.org/abs/2006.11239)
+- Nichol, A., Dhariwal, P. (2021). _Improved Denoising Diffusion Probabilistic Models._ [arXiv:2102.09672](https://arxiv.org/abs/2102.09672)
+- Tomczak, J. M. (2024). _Deep Generative Modeling_ (2nd ed.). Springer. [doi:10.1007/978-3-031-64087-2](https://doi.org/10.1007/978-3-031-64087-2)
+- Rogge, N., Rasul, K. (2022). _The Annotated Diffusion Model._ [Hugging Face](https://huggingface.co/blog/annotated-diffusion)
 
 Data and metrics:
 
-- Choi, Y., Uh, Y., Yoo, J., Ha, J.-W. (2020). *StarGAN v2: Diverse Image Synthesis for Multiple Domains.* [arXiv:1912.01865](https://arxiv.org/abs/1912.01865) — AFHQ
-- Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S. (2017). *GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium.* [arXiv:1706.08500](https://arxiv.org/abs/1706.08500) — FID
+- Choi, Y., Uh, Y., Yoo, J., Ha, J.-W. (2020). _StarGAN v2: Diverse Image Synthesis for Multiple Domains._ [arXiv:1912.01865](https://arxiv.org/abs/1912.01865) — AFHQ
+- Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S. (2017). _GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium._ [arXiv:1706.08500](https://arxiv.org/abs/1706.08500) — FID
